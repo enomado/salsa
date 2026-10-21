@@ -342,6 +342,11 @@ macro_rules! setup_tracked_fn {
                     fn heap_size(value: &Self::Output<'_>) -> Option<usize> {
                         Some($heap_size_fn(value))
                     }
+
+                    // Mentions the path only to sit inside this repetition: a
+                    // `heap_size` fn may be generic, so it cannot be named as a
+                    // value here.
+                    const HEAP_SIZE_DECLARED: bool = !stringify!($heap_size_fn).is_empty();
                 )?
 
                 fn execute<$db_lt>($db: &$db_lt Self::DbView, ($($input_id),*): ($($interned_input_ty),*)) -> Self::Output<$db_lt> {

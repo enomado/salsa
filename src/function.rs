@@ -91,6 +91,12 @@ pub unsafe trait Configuration: Any {
         None
     }
 
+    /// Whether `heap_size` above is user-provided. An evicted memo has no value
+    /// to ask, so this is what decides whether it reports "zero bytes" or "not
+    /// measured" — answering zero for a query that never measured anything
+    /// made such a query read as weighed and empty.
+    const HEAP_SIZE_DECLARED: bool = false;
+
     /// Invoked when we need to compute the value for the given key, either because we've never
     /// computed it before or because the old one relied on inputs that have changed.
     ///

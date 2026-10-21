@@ -377,7 +377,11 @@ impl<C: Configuration> crate::table::memo::Memo for Memo<C> {
     #[cfg(feature = "salsa_unstable")]
     fn memory_usage(&self) -> crate::database::MemoInfo {
         let size_of = std::mem::size_of::<Memo<C>>() + self.header.revisions.allocation_size();
-        let heap_size = self.value().map_or(Some(0), C::heap_size);
+        // An evicted memo holds nothing on the heap — but only a query that
+        // measures its heap can say so; for the rest, zero would be a guess.
+        let heap_size = self
+            .value()
+            .map_or(C::HEAP_SIZE_DECLARED.then_some(0), C::heap_size);
 
         crate::database::MemoInfo {
             debug_name: C::DEBUG_NAME,

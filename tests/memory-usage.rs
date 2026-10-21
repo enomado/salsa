@@ -314,6 +314,42 @@ fn test() {
     expected.assert_eq(&format!("{queries_info:#?}"));
 }
 
+#[salsa::tracked(returns(clone), lru = 1)]
+fn input_to_owned_lru(db: &dyn salsa::Database, input: MyInput) -> String {
+    input.field(db)
+}
+
+#[salsa::tracked(returns(clone), lru = 1, heap_size = string_size_of)]
+fn input_to_owned_lru_get_size(db: &dyn salsa::Database, input: MyInput) -> String {
+    input.field(db)
+}
+
+/// An evicted memo of a query without `heap_size` is "not measured", like the
+/// live ones next to it — it used to answer `Some(0)`, and since live memos of
+/// such a query contribute nothing, the ingredient as a whole read as weighed
+/// and empty. A query that does measure still counts its evicted memos as zero.
+#[test]
+fn evicted_memos_do_not_invent_a_heap_size() {
+    let mut db = salsa::DatabaseImpl::new();
+    let input1 = MyInput::new(&db, "a".repeat(50));
+    let input2 = MyInput::new(&db, "a".repeat(150));
+    for input in [input1, input2] {
+        input_to_owned_lru(&db, input);
+        input_to_owned_lru_get_size(&db, input);
+    }
+    db.trigger_lru_eviction();
+
+    let usage = <dyn salsa::Database>::memory_usage(&mut db);
+    let unmeasured = &usage.queries["input_to_owned_lru"];
+    let measured = &usage.queries["input_to_owned_lru_get_size"];
+    // Positive control: one memo per input survives as a memo, one of them
+    // without its value.
+    assert_eq!(unmeasured.count(), 2);
+    assert_eq!(measured.count(), 2);
+    assert_eq!(unmeasured.heap_size_of_fields(), None);
+    assert_eq!(measured.heap_size_of_fields(), Some(150));
+}
+
 #[test]
 fn cancellation_does_not_allocate_extra_for_ordinary_memos() {
     let mut db = salsa::DatabaseImpl::new();
