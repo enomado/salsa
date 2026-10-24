@@ -149,6 +149,12 @@ where
         // output bookkeeping. Cancellation counts are only comparable within a revision.
         if let Some(old_memo) = opt_old_memo
             && old_memo.header.verified_at.load() == current_revision
+            // Green validation can advance a finalized memo without restoring
+            // its evicted value. It is not a previous cycle iteration or a
+            // poisoned provisional result. Keep its header for output identity
+            // bookkeeping, but start a fresh execution instead of propagating
+            // a panic because the value is absent.
+            && (old_memo.value.is_some() || old_memo.header.may_be_provisional())
         {
             match old_memo.header.previous_iteration(
                 database_key_index,

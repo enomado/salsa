@@ -213,3 +213,34 @@ fn lru_keeps_dependency_info() {
     assert_eq!(p, 0);
     db.assert_logs_len(0);
 }
+
+#[salsa::tracked(returns(copy), lru = 1, cycle_initial = |_, _, _, _| 0)]
+fn cycle_capable_lru(db: &dyn LogDatabase, input: MyInput) -> u32 {
+    db.push_log(format!("cycle_capable_lru({})", input.field(db)));
+    input.field(db)
+}
+
+#[salsa::tracked(returns(copy))]
+fn cycle_capable_consumer(db: &dyn LogDatabase, input: MyInput) -> u32 {
+    cycle_capable_lru(db, input)
+}
+
+#[test]
+fn green_validation_of_evicted_cycle_query_does_not_poison_recomputation() {
+    let mut db = common::LoggerDatabase::default();
+    let inputs: Vec<_> = (0..4).map(|i| MyInput::new(&db, i)).collect();
+    for (i, &input) in inputs.iter().enumerate() {
+        assert_eq!(cycle_capable_consumer(&db, input), i as u32);
+    }
+    db.assert_logs_len(inputs.len());
+
+    db.synthetic_write(salsa::Durability::LOW);
+
+    // The consumer validates the dependency's memo without restoring its
+    // evicted value. Reading that value next must recompute it, not report a
+    // propagated panic merely because its memo is already green this revision.
+    assert_eq!(cycle_capable_consumer(&db, inputs[0]), 0);
+    db.assert_logs_len(0);
+    assert_eq!(cycle_capable_lru(&db, inputs[0]), 0);
+    db.assert_logs_len(1);
+}
